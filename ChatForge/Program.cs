@@ -3,8 +3,14 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 
-// ✅ FIRST create builder
+// ✅ Create Builder
 var builder = WebApplication.CreateBuilder(args);
+
+// ✅ Render Port Support
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ListenAnyIP(8080);
+});
 
 // ✅ Add Controllers
 builder.Services.AddControllers();
@@ -15,12 +21,13 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(
+                "https://chat-frontend-eta-three.vercel.app",
                 "http://localhost:5173",
                 "http://localhost:5174"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // 🔥 required for cookies
+            .AllowCredentials();
     });
 });
 
@@ -29,14 +36,15 @@ builder.Services.AddSingleton<MongoService>();
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddHttpClient<AiService>();
 
-// 🔐 JWT Authentication
+// ✅ JWT Key
 var jwtKey = builder.Configuration["Jwt:Key"];
 
 if (string.IsNullOrEmpty(jwtKey))
 {
-    throw new Exception("JWT Key missing in appsettings.json");
+    throw new Exception("JWT Key missing in configuration");
 }
 
+// ✅ Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -46,17 +54,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = false,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+
             IssuerSigningKey = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(jwtKey)
             )
         };
 
-        // ✅ Read token from cookie OR header
+        // ✅ Read JWT from Cookie OR Authorization Header
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
             {
-                // 1️⃣ Check cookie
+                // 🔹 Read from Cookie
                 var token = context.Request.Cookies["token"];
 
                 if (!string.IsNullOrEmpty(token))
@@ -64,9 +73,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     context.Token = token;
                 }
 
-                // 2️⃣ Fallback: Authorization header
-                var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
-                if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+                // 🔹 Fallback: Read from Authorization Header
+                var authHeader = context.Request.Headers["Authorization"]
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrEmpty(authHeader) &&
+                    authHeader.StartsWith("Bearer "))
                 {
                     context.Token = authHeader.Substring("Bearer ".Length);
                 }
@@ -76,19 +88,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// ✅ Authorization
 builder.Services.AddAuthorization();
 
-// ✅ Swagger + JWT Support
+// ✅ Swagger + JWT
 builder.Services.AddEndpointsApiExplorer();
+
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "Enter: Bearer {token}",
+        Description = "Enter JWT Token like: Bearer {your token}",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
-        Scheme = "bearer"
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -102,30 +117,30 @@ builder.Services.AddSwaggerGen(options =>
                     Id = "Bearer"
                 }
             },
-            new string[] {}
+            Array.Empty<string>()
         }
     });
 });
 
+// ✅ Build App
 var app = builder.Build();
 
-// ✅ Middleware Order (correct)
-
-// Swagger
+// ✅ Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// CORS (before auth)
-app.UseCors("AllowFrontend");
-
-// HTTPS
+// ✅ HTTPS
 app.UseHttpsRedirection();
 
-// Auth
+// ✅ CORS (must be before auth)
+app.UseCors("AllowFrontend");
+
+// ✅ Authentication & Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Controllers
+// ✅ Controllers
 app.MapControllers();
 
+// ✅ Run App
 app.Run();
