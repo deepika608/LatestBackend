@@ -20,11 +20,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                "https://chat-frontend-eta-three.vercel.app",
-                "http://localhost:5173",
-                "http://localhost:5174"
-            )
+        policy
+            .SetIsOriginAllowed(origin =>
+                origin.Contains("vercel.app") ||
+                origin.Contains("localhost"))
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -125,18 +124,19 @@ builder.Services.AddSwaggerGen(options =>
 // ✅ Build App
 var app = builder.Build();
 
-// ✅ Swagger
 app.UseSwagger();
+
 app.UseSwaggerUI();
+
+// ✅ CORS FIRST
+app.UseCors("AllowFrontend");
 
 // ✅ HTTPS
 app.UseHttpsRedirection();
 
-// ✅ CORS (must be before auth)
-app.UseCors("AllowFrontend");
-
-// ✅ Authentication & Authorization
+// ✅ Authentication
 app.UseAuthentication();
+
 app.UseAuthorization();
 
 // ✅ Controllers
